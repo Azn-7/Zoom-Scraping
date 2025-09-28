@@ -15,7 +15,7 @@ import zoom_utils as utils
 utils.HEADLESS = True
 
 INPUT_TXT = 'zoom_links.txt'
-BASE_OUTPUT_PATH = r'C:\Users\Azn\Focused\Zoom Scraping\CSIS10B'
+BASE_OUTPUT_PATH = r'(INSERT PATH)'
 
 
 def make_driver():
@@ -214,4 +214,5 @@ def main():
 
 
 if __name__ == '__main__':
+
     main()
