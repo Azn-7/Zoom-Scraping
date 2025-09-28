@@ -1,6 +1,6 @@
 function extractFilteredLinksFromDocsViaURL() {
-  const publicDriveLink = 'https://drive.google.com/file/d/15ZIBiZ_2iz4_gcRbLsUWyA8nRxzCWPvt/view?usp=drive_link'; //Link to .txt file
-  const sheetName = 'Grouped Zoom Links (CSIS10C)(Assignments)'; //Name of google sheet
+  const publicDriveLink = '(LINK TO .TXT)'; //Link to .txt file
+  const sheetName = '(INSERT TITLE)'; //Name of google sheet
 
   // Extract file ID
   const fileIdMatch = publicDriveLink.match(/[-\w]{25,}/);
@@ -124,4 +124,5 @@ function walkElementTree(element, linkSet) {
 
 function isZoomLink(link) {
   return link.includes('cccconfer.zoom.us') || link.includes('mpc-edu.zoom.us');
+
 }
