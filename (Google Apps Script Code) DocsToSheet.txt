@@ -123,5 +123,6 @@ function walkElementTree(element, linkSet) {
 }
 
 function isZoomLink(link) {
-  return link.includes('cccconfer.zoom.us') || link.includes('mpc-edu.zoom.us');
+  return link.includes('zoom1.com') || link.includes('zoom2.com');
+
 }
