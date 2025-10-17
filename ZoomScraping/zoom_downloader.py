@@ -10,12 +10,20 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 import zoom_utils as utils
 
-# --- runtime toggles (edit here for each run) ---
+# --- runtime toggles ---
 # Set HEADLESS = False to run with visible browser
 utils.HEADLESS = True
 
+# How many seconds to wait for any remaining files that are still being downloaded. By default, this is set to 20 minutes.
+# This should be increased should you either download large files and have slow internet.
+ACTIVE_DOWNLOAD_TIMEOUT_SECONDS = 1200
+
+# Extensions to remove after downloads complete
+# To disable deletion leave as an empty list: REMOVE_EXTENSIONS = []
+REMOVE_EXTENSIONS = ['.m4a', '.mp4', '.vtt']   # e.g. ['.m4a', '.tmp']
+
 INPUT_TXT = 'zoom_links.txt'
-BASE_OUTPUT_PATH = r'(INSERT PATH)'
+BASE_OUTPUT_PATH = r'C:\Users\Azn\Downloads\ZoomRecordings(3)'
 
 
 def make_driver():
@@ -94,7 +102,7 @@ def process_link(driver, title, link, idx):
             clicked_download = utils.search_and_force_click_download_in_all_frames(driver, per_link_tmp)
 
     if not clicked_download:
-        return {'status': 'skipped', 'elapsed': time.time() - link_start, 'files': []}
+        return {'status': 'skipped', 'elapsed': time.time() - link_start, 'files': [], 'per_link_tmp': per_link_tmp, 'title_dir': title_dir}
 
     time.sleep(1.5)
 
@@ -154,7 +162,11 @@ def process_link(driver, title, link, idx):
             moved = utils.move_files_to_parent(per_link_tmp, title_dir)
             all_moved = (moved or [])
 
-    removed_m4a = utils.remove_m4a_files(title_dir)
+    # conditional cleanup: only run if user configured extensions to remove
+    if REMOVE_EXTENSIONS:
+        removed = utils.remove_files_by_extensions(title_dir, REMOVE_EXTENSIONS)
+        for f in removed:
+            print('   🗑️ Removed from title folder:', f)
 
     try:
         if not os.listdir(per_link_tmp):
@@ -162,7 +174,7 @@ def process_link(driver, title, link, idx):
     except Exception:
         pass
 
-    return {'status': 'done', 'elapsed': time.time() - link_start, 'files': all_moved, 'm4a_removed': removed_m4a}
+    return {'status': 'done', 'elapsed': time.time() - link_start, 'files': all_moved, 'removed': (removed if REMOVE_EXTENSIONS else []), 'per_link_tmp': per_link_tmp, 'title_dir': title_dir}
 
 
 def main():
@@ -176,6 +188,8 @@ def main():
     failed_links = []
 
     processed = 0
+    last_per_link_tmp = None
+    last_title_dir = None
     for title, links in grouped.items():
         for idx, link in enumerate(links, start=1):
             processed += 1
@@ -183,6 +197,9 @@ def main():
             print(f'\n[{processed}/{total}] {title} -> {link}')
             res = process_link(driver, title, link, idx)
             times.append(res.get('elapsed', 0))
+            last_per_link_tmp = res.get('per_link_tmp') or last_per_link_tmp
+            last_title_dir = res.get('title_dir') or last_title_dir
+
             if res['status'] == 'done' and res.get('files'):
                 overall['success'] += 1
                 print('   ✅ Downloaded:', res.get('files'))
@@ -200,6 +217,33 @@ def main():
             est = int(avg * remaining)
             print(f'   ⏱ Avg {avg:.1f}s/link — est remaining {est//60}m {est%60}s')
 
+    # Before quitting browser, ensure last link's active downloads completed and move remaining files
+    try:
+        if ACTIVE_DOWNLOAD_TIMEOUT_SECONDS > 0 and last_per_link_tmp and os.path.isdir(last_per_link_tmp):
+            utils.wait_for_active_downloads(last_per_link_tmp, timeout=ACTIVE_DOWNLOAD_TIMEOUT_SECONDS)
+
+        # Move any files that finished after the wait into the title folder
+        if last_per_link_tmp and last_title_dir and os.path.isdir(last_per_link_tmp):
+            moved_after_wait = utils.move_files_to_parent(last_per_link_tmp, last_title_dir)
+            if moved_after_wait:
+                print('   ➜ Moved files to title folder after final wait:', moved_after_wait)
+
+            # conditional final cleanup: only run if user configured extensions to remove
+            if REMOVE_EXTENSIONS:
+                removed_after_wait = utils.remove_files_by_extensions(last_title_dir, REMOVE_EXTENSIONS)
+                for f in removed_after_wait:
+                    print('   🗑️ Removed from title folder after final wait:', f)
+
+            # try to remove tmp folder if empty
+            try:
+                if not os.listdir(last_per_link_tmp):
+                    os.rmdir(last_per_link_tmp)
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+
     driver.quit()
 
     print('\nSummary:')
@@ -214,5 +258,4 @@ def main():
 
 
 if __name__ == '__main__':
-
     main()
