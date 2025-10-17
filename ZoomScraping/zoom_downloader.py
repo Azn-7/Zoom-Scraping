@@ -20,7 +20,7 @@ ACTIVE_DOWNLOAD_TIMEOUT_SECONDS = 1200
 
 # Extensions to remove after downloads complete
 # To disable deletion leave as an empty list: REMOVE_EXTENSIONS = []
-REMOVE_EXTENSIONS = ['.m4a', '.mp4', '.vtt']   # e.g. ['.m4a', '.tmp']
+REMOVE_EXTENSIONS = ['.m4a', '.vtt']   # e.g. ['.m4a', '.tmp']
 
 INPUT_TXT = 'zoom_links.txt'
 BASE_OUTPUT_PATH = r'C:\Users\Azn\Downloads\ZoomRecordings(3)'
@@ -259,3 +259,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
