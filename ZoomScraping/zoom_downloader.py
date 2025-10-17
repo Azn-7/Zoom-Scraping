@@ -23,7 +23,7 @@ ACTIVE_DOWNLOAD_TIMEOUT_SECONDS = 1200
 REMOVE_EXTENSIONS = ['.m4a', '.vtt']   # e.g. ['.m4a', '.tmp']
 
 INPUT_TXT = 'zoom_links.txt'
-BASE_OUTPUT_PATH = r'C:\Users\Azn\Downloads\ZoomRecordings(3)'
+BASE_OUTPUT_PATH = r'C:\Users\Name\Downloads\Results'
 
 
 def make_driver():
@@ -259,4 +259,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
