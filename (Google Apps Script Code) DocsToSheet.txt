@@ -1,0 +1,127 @@
+function extractFilteredLinksFromDocsViaURL() {
+  const publicDriveLink = '(LINK TO .TXT FILE IN GOOGLE DRIVE)'; //Link to .txt file
+  const sheetName = '(TITLE)'; //Name of google sheet
+
+  // Extract file ID
+  const fileIdMatch = publicDriveLink.match(/[-\w]{25,}/);
+  if (!fileIdMatch) {
+    Logger.log('❌ Invalid Google Drive link format. Please use a full public link like https://drive.google.com/file/d/...');
+    return;
+  }
+  const fileId = fileIdMatch[0];
+  const txtFileUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+  // Try fetching the file
+  let response;
+  try {
+    response = UrlFetchApp.fetch(txtFileUrl);
+  } catch (e) {
+    Logger.log(`❌ Unable to access file. Make sure it's publicly shared. (${e.message})`);
+    return;
+  }
+
+  // Check MIME type
+  let docUrls;
+  try {
+    docUrls = response.getContentText().split('\n').filter(url => url.trim());
+  } catch (e) {
+    Logger.log(`❌ Failed to read file content. It may not be a valid .txt file. (${e.message})`);
+    return;
+  }
+
+  // Proceed with parsing
+  docUrls = response.getContentText().split('\n').filter(url => url.trim());
+  const totalDocs = docUrls.length;
+
+  const zoomRows = [];
+  const otherRows = [];
+
+  const startTime = new Date();
+
+  for (let i = 0; i < totalDocs; i++) {
+    const rawUrl = docUrls[i].trim();
+    try {
+      const docId = rawUrl.match(/[-\w]{25,}/)[0];
+      const doc = DocumentApp.openById(docId);
+
+      // Sanitize document title: replace whitespace runs with '-', collapse multiple '-', trim edge '-'
+      const rawDocName = doc.getName() || 'untitled';
+      const docName = rawDocName
+        .replace(/\s+/g, '-')    // whitespace -> single hyphen
+        .replace(/-+/g, '-')     // collapse repeated hyphens
+        .replace(/^-+|-+$/g, ''); // trim leading/trailing hyphens
+
+      Logger.log(`📄 Processing ${i + 1}/${totalDocs}: ${docName}`);
+
+      const body = doc.getBody();
+      const linkSet = new Set();
+
+      walkElementTree(body, linkSet);
+      const header = doc.getHeader();
+      if (header) walkElementTree(header, linkSet);
+      const footer = doc.getFooter();
+      if (footer) walkElementTree(footer, linkSet);
+
+      for (let link of linkSet) {
+        if (isZoomLink(link)) {
+          zoomRows.push([docName, link]);
+        } else {
+          otherRows.push([docName, link]);
+        }
+      }
+
+    } catch (e) {
+      Logger.log(`❌ Error processing: ${rawUrl} — ${e.message}`);
+    }
+  }
+
+  Logger.log(`Creating Google Sheets titled: ${sheetName}`);
+  const sheet = SpreadsheetApp.create(sheetName);
+  const sheetTab = sheet.getActiveSheet();
+  sheetTab.appendRow(['Document Title', 'Zoom Link', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'Other Title', 'Other Link']);
+
+  const maxRows = Math.max(zoomRows.length, otherRows.length);
+  for (let i = 0; i < maxRows; i++) {
+    const zoomRow = zoomRows[i] || ['', ''];
+    const otherRow = otherRows[i] || ['', ''];
+    sheetTab.appendRow([...zoomRow, '', '', '', '', '', '', '', '', '', '', '', '', '', '', ...otherRow]);
+  }
+
+  const endTime = new Date();
+  const elapsedMs = endTime - startTime;
+  const elapsedMin = Math.floor(elapsedMs / 60000);
+  const elapsedSec = Math.floor((elapsedMs % 60000) / 1000);
+
+  Logger.log(`✅ Export complete: ${sheet.getUrl()}`);
+  Logger.log(`⏱️ Total time: ${elapsedMin}m ${elapsedSec}s`);
+}
+
+function walkElementTree(element, linkSet) {
+  const type = element.getType();
+
+  if (type === DocumentApp.ElementType.TEXT) {
+    const text = element.asText();
+    const fullText = text.getText();
+    const len = fullText.length;
+
+    for (let i = 0; i < len; i++) {
+      const link = text.getLinkUrl(i);
+      if (link) linkSet.add(link);
+    }
+
+    const rawUrls = fullText.match(/https?:\/\/[^\s)]+/g);
+    if (rawUrls) {
+      for (let raw of rawUrls) linkSet.add(raw);
+    }
+
+  } else if (element.getNumChildren) {
+    const count = element.getNumChildren();
+    for (let i = 0; i < count; i++) {
+      walkElementTree(element.getChild(i), linkSet);
+    }
+  }
+}
+
+function isZoomLink(link) {
+  return link.includes('cccconfer.zoom.us') || link.includes('mpc-edu.zoom.us');
+}
