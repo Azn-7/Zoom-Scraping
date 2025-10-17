@@ -112,17 +112,27 @@ def move_files_to_parent(src_folder, dest_folder):
                 pass
     return moved
 
-def remove_m4a_files(folder):
+
+def remove_files_by_extensions(folder, exts):
+    """
+    Remove files in folder whose names end with any extension in exts.
+    exts: list of strings like ['.m4a', '.tmp'] (case-insensitive).
+    Returns list of removed filenames.
+    """
     removed = []
     if not os.path.isdir(folder):
         return removed
+    normalized = [e.lower() for e in exts]
     for f in list(os.listdir(folder)):
-        if f.lower().endswith('.m4a'):
-            try:
-                os.remove(os.path.join(folder, f))
-                removed.append(f)
-            except Exception:
-                pass
+        fname_lower = f.lower()
+        for ext in normalized:
+            if fname_lower.endswith(ext):
+                try:
+                    os.remove(os.path.join(folder, f))
+                    removed.append(f)
+                except Exception:
+                    pass
+                break
     return removed
 
 
@@ -266,4 +276,26 @@ def search_and_force_click_download_in_all_frames(driver, tmp_folder):
                 pass
             continue
 
+    return False
+
+
+def wait_for_active_downloads(folder, timeout=180, poll=1.5):
+    """
+    Wait until Chrome '.crdownload' partial files in folder disappear or timeout.
+    Returns True if no active partials remain, False if timeout reached.
+    """
+    if not folder or not os.path.isdir(folder):
+        return True
+    print(f'   ⏳ Waiting for active downloads to finish in {folder} (max {timeout}s)...')
+    deadline = time.time() + timeout
+    try:
+        while time.time() < deadline:
+            partials = [f for f in os.listdir(folder) if f.endswith('.crdownload')]
+            if not partials:
+                print('   ✅ All downloads completed.')
+                return True
+            time.sleep(poll)
+    except Exception:
+        pass
+    print('   ⚠️ Timeout reached — some downloads may still be incomplete.')
     return False
