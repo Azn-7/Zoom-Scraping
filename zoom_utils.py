@@ -74,64 +74,72 @@ def click_with_retries(driver, xpaths, timeout=5, attempts=None, pause=None):
     return False
 
 
-def list_finished(folder):
+def get_completed_downloads(folder: str) -> list:
+    """Returns a list of completed downloads in the specified folder, ignoring partial downloads (.crdownload)."""
     try:
-        return [f for f in os.listdir(folder) if not f.endswith('.crdownload')]
+        return [file_name for file_name in os.listdir(folder) if not file_name.endswith('.crdownload')]
     except Exception:
         return []
 
 
-def wait_for_first_file(src_tmp, timeout):
-    deadline = time.time() + timeout
+def wait_for_initial_download(temp_folder: str, timeout_seconds: int) -> list:
+    """Waits for the first completed file to appear in the temp folder within the specified timeout."""
+    deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        finished = list_finished(src_tmp)
-        if finished:
-            return finished
+        completed_files = get_completed_downloads(temp_folder)
+        if completed_files:
+            return completed_files
         time.sleep(0.5)
     return []
 
 
-def move_files_to_parent(src_folder, dest_folder, title_prefix=None):
-    moved = []
-    for fname in list(os.listdir(src_folder)):
-        if fname.endswith('.crdownload'):
+def move_downloads_to_destination(source_folder: str, destination_folder: str, title_prefix: str = None) -> list:
+    """Moves completed downloads from the source folder to the destination folder, optionally renaming them."""
+    moved_files = []
+    for file_name in list(os.listdir(source_folder)):
+        if file_name.endswith('.crdownload'):
             continue
-        src = os.path.join(src_folder, fname)
-        base_fname = fname
+            
+        source_path = os.path.join(source_folder, file_name)
+        base_filename = file_name
         
         if title_prefix:
             # Try to replace the standard Zoom prefix 'GMT<timestamp>..._Recording' with our title_prefix
-            new_fname = re.sub(r'^GMT\d{8}-\d+(?:_Recording)?', title_prefix, base_fname, flags=re.IGNORECASE)
-            if new_fname == base_fname:
+            new_filename = re.sub(r'^GMT\d{8}-\d+(?:_Recording)?', title_prefix, base_filename, flags=re.IGNORECASE)
+            if new_filename == base_filename:
                 # If the string wasn't modified (doesn't follow standard Zoom pattern), default to prepending
-                base_fname = f"{title_prefix}_{base_fname}"
+                base_filename = f"{title_prefix}_{base_filename}"
             else:
-                base_fname = new_fname
+                base_filename = new_filename
                 
-        dest_path = os.path.join(dest_folder, base_fname)
-        if os.path.exists(dest_path):
-            base, ext = os.path.splitext(base_fname)
-            counter = 1
-            candidate = f"{base}__dup{counter}{ext}"
-            dest_candidate = os.path.join(dest_folder, candidate)
-            while os.path.exists(dest_candidate):
-                counter += 1
-                candidate = f"{base}__dup{counter}{ext}"
-                dest_candidate = os.path.join(dest_folder, candidate)
-            dest_path = dest_candidate
-            base_fname = candidate
+        destination_path = os.path.join(destination_folder, base_filename)
+        
+        # Handle filename collisions by appending __dup{counter}
+        if os.path.exists(destination_path):
+            base_name, extension = os.path.splitext(base_filename)
+            collision_counter = 1
+            candidate_name = f"{base_name}__dup{collision_counter}{extension}"
+            candidate_path = os.path.join(destination_folder, candidate_name)
+            while os.path.exists(candidate_path):
+                collision_counter += 1
+                candidate_name = f"{base_name}__dup{collision_counter}{extension}"
+                candidate_path = os.path.join(destination_folder, candidate_name)
+            destination_path = candidate_path
+            base_filename = candidate_name
+            
         try:
-            os.replace(src, dest_path)
-            moved.append(base_fname)
+            os.replace(source_path, destination_path)
+            moved_files.append(base_filename)
         except Exception:
             try:
-                with open(src, 'rb') as r, open(dest_path, 'wb') as w:
-                    w.write(r.read())
-                os.remove(src)
-                moved.append(base_fname)
+                # Fallback to manual copy-delete if os.replace fails
+                with open(source_path, 'rb') as read_file, open(destination_path, 'wb') as write_file:
+                    write_file.write(read_file.read())
+                os.remove(source_path)
+                moved_files.append(base_filename)
             except Exception:
                 pass
-    return moved
+    return moved_files
 
 
 def remove_files_by_extensions(folder, exts):
@@ -157,25 +165,27 @@ def remove_files_by_extensions(folder, exts):
     return removed
 
 
-def collect_network_media_urls(driver):
-    urls = set()
+def extract_media_urls_from_network_logs(driver) -> list:
+    """Parses Chrome's performance logs to identify any embedded media URLs (like .mp4 or .vtt)."""
+    media_urls = set()
     try:
-        logs = driver.get_log('performance')
+        network_logs = driver.get_log('performance')
     except Exception:
         return []
-    for entry in logs:
+        
+    for log_entry in network_logs:
         try:
-            msg = json.loads(entry['message'])['message']
-            method = msg.get('method')
-            if method in ('Network.responseReceived', 'Network.requestWillBeSent'):
-                params = msg.get('params', {})
-                resp = params.get('response') or {}
-                url = resp.get('url', '') or params.get('request', {}).get('url', '')
-                if url and _net_re.search(url):
-                    urls.add(url)
+            log_message = json.loads(log_entry['message'])['message']
+            request_method = log_message.get('method')
+            if request_method in ('Network.responseReceived', 'Network.requestWillBeSent'):
+                request_params = log_message.get('params', {})
+                response_data = request_params.get('response') or {}
+                extracted_url = response_data.get('url', '') or request_params.get('request', {}).get('url', '')
+                if extracted_url and _net_re.search(extracted_url):
+                    media_urls.add(extracted_url)
         except Exception:
             continue
-    return list(urls)
+    return list(media_urls)
 
 
 def download_with_browser_cookies(driver, url, dest_path, timeout=120):
@@ -194,19 +204,20 @@ def download_with_browser_cookies(driver, url, dest_path, timeout=120):
                 fh.write(chunk)
     return True
 
-def search_and_force_click_download_in_all_frames(driver, tmp_folder):
-    frames = driver.find_elements(By.TAG_NAME, 'iframe')
-    contexts = [(None, None)] + [(i, f) for i, f in enumerate(frames)]
-    for idx, fr in contexts:
+def force_click_download_button(driver, temp_folder: str) -> bool:
+    """Searches through all open iframes on the current page to locate and forcefully click the download button."""
+    iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+    frame_contexts = [(None, None)] + [(i, frame) for i, frame in enumerate(iframes)]
+    for idx, frame in frame_contexts:
         try:
-            if fr is None:
+            if frame is None:
                 driver.switch_to.default_content()
             else:
                 driver.switch_to.default_content()
-                driver.switch_to.frame(fr)
+                driver.switch_to.frame(frame)
             time.sleep(0.05)
 
-            xpaths = [
+            download_button_xpaths = [
                 "//*[contains(translate(normalize-space(text()),'DOWNLOAD','download'),'download')]",
                 "//*[contains(translate(@aria-label,'DOWNLOAD','download'),'download')]",
                 "//button[contains(translate(.,'DOWNLOAD','download'),'download')]",
@@ -214,55 +225,55 @@ def search_and_force_click_download_in_all_frames(driver, tmp_folder):
                 "//*[contains(translate(@title,'DOWNLOAD','download'),'download')]"
             ]
 
-            candidates = []
-            for xp in xpaths:
+            button_candidates = []
+            for current_xpath in download_button_xpaths:
                 try:
-                    els = driver.find_elements(By.XPATH, xp)
-                    for e in els:
+                    elements = driver.find_elements(By.XPATH, current_xpath)
+                    for element in elements:
                         try:
-                            txt = (e.text or e.get_attribute('aria-label') or e.get_attribute('title') or '').strip()
+                            element_text = (element.text or element.get_attribute('aria-label') or element.get_attribute('title') or '').strip()
                         except Exception:
-                            txt = ''
-                        if txt:
-                            candidates.append(e)
+                            element_text = ''
+                        if element_text:
+                            button_candidates.append(element)
                 except Exception:
                     continue
 
-            seen = set()
-            unique = []
-            for e in candidates:
+            seen_elements = set()
+            unique_candidates = []
+            for element in button_candidates:
                 try:
-                    key = (e.tag_name, (e.get_attribute('id') or ''), (e.get_attribute('class') or ''), (e.text or '')[:60])
+                    element_key = (element.tag_name, (element.get_attribute('id') or ''), (element.get_attribute('class') or ''), (element.text or '')[:60])
                 except Exception:
-                    key = (e.tag_name, '')
-                if key in seen:
+                    element_key = (element.tag_name, '')
+                if element_key in seen_elements:
                     continue
-                seen.add(key)
-                unique.append(e)
+                seen_elements.add(element_key)
+                unique_candidates.append(element)
 
-            if not unique:
+            if not unique_candidates:
                 driver.switch_to.default_content()
                 continue
 
-            for e in unique:
+            for element in unique_candidates:
                 try:
-                    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", e)
+                    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
                     time.sleep(0.05)
-                    e.click()
+                    element.click()
                     driver.switch_to.default_content()
                     return True
                 except Exception:
                     pass
 
                 try:
-                    driver.execute_script("arguments[0].click();", e)
+                    driver.execute_script("arguments[0].click();", element)
                     driver.switch_to.default_content()
                     return True
                 except Exception:
                     pass
 
                 try:
-                    ActionChains(driver).move_to_element(e).pause(0.05).click(e).perform()
+                    ActionChains(driver).move_to_element(element).pause(0.05).click(element).perform()
                     driver.switch_to.default_content()
                     return True
                 except Exception:
@@ -277,7 +288,7 @@ def search_and_force_click_download_in_all_frames(driver, tmp_folder):
                     ['pointerdown','pointerup','click'].forEach(evt=>{
                       el.dispatchEvent(new MouseEvent(evt,{bubbles:true,cancelable:true,clientX:x,clientY:y}));
                     });
-                    """, e)
+                    """, element)
                     driver.switch_to.default_content()
                     return True
                 except Exception:
