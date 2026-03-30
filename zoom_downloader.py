@@ -69,8 +69,8 @@ def load_links(path):
 
 
 def process_link(driver, title, link, idx):
-    safe_title = utils.sanitize(title)
-    title_dir = os.path.join(BASE_OUTPUT_PATH, safe_title)
+    safe_title = utils.sanitize(title).replace(' ', '_')
+    title_dir = BASE_OUTPUT_PATH
     os.makedirs(title_dir, exist_ok=True)
 
     per_link_tmp = os.path.join(title_dir, f'_tmp_Video_{idx}')
@@ -111,7 +111,7 @@ def process_link(driver, title, link, idx):
             clicked_download = utils.search_and_force_click_download_in_all_frames(driver, per_link_tmp)
 
     if not clicked_download:
-        return {'status': 'skipped', 'elapsed': time.time() - link_start, 'files': [], 'per_link_tmp': per_link_tmp, 'title_dir': title_dir}
+        return {'status': 'skipped', 'elapsed': time.time() - link_start, 'files': [], 'per_link_tmp': per_link_tmp, 'title_dir': title_dir, 'safe_title': safe_title}
 
     time.sleep(1.5)
 
@@ -119,7 +119,7 @@ def process_link(driver, title, link, idx):
     if not first:
         first = utils.wait_for_first_file(per_link_tmp, timeout=utils.DOWNLOAD_WAIT)
 
-    moved = utils.move_files_to_parent(per_link_tmp, title_dir)
+    moved = utils.move_files_to_parent(per_link_tmp, title_dir, title_prefix=safe_title)
 
     start = time.time()
     last_seen = set(utils.list_finished(per_link_tmp))
@@ -129,7 +129,7 @@ def process_link(driver, title, link, idx):
         current = set(utils.list_finished(per_link_tmp))
         new_files = sorted(list(current - last_seen))
         if new_files:
-            moved_now = utils.move_files_to_parent(per_link_tmp, title_dir)
+            moved_now = utils.move_files_to_parent(per_link_tmp, title_dir, title_prefix=safe_title)
             for m in moved_now:
                 if m not in additional:
                     additional.append(m)
@@ -168,7 +168,7 @@ def process_link(driver, title, link, idx):
                     utils.download_with_browser_cookies(driver, url, tmp_dest)
                 except Exception:
                     pass
-            moved = utils.move_files_to_parent(per_link_tmp, title_dir)
+            moved = utils.move_files_to_parent(per_link_tmp, title_dir, title_prefix=safe_title)
             all_moved = (moved or [])
 
     # conditional cleanup: only run if user configured extensions to remove
@@ -183,7 +183,7 @@ def process_link(driver, title, link, idx):
     except Exception:
         pass
 
-    return {'status': 'done', 'elapsed': time.time() - link_start, 'files': all_moved, 'removed': (removed if REMOVE_EXTENSIONS else []), 'per_link_tmp': per_link_tmp, 'title_dir': title_dir}
+    return {'status': 'done', 'elapsed': time.time() - link_start, 'files': all_moved, 'removed': (removed if REMOVE_EXTENSIONS else []), 'per_link_tmp': per_link_tmp, 'title_dir': title_dir, 'safe_title': safe_title}
 
 
 def main():
@@ -199,6 +199,7 @@ def main():
     processed = 0
     last_per_link_tmp = None
     last_title_dir = None
+    last_title_prefix = None
     for title, links in grouped.items():
         for idx, link in enumerate(links, start=1):
             processed += 1
@@ -208,6 +209,7 @@ def main():
             times.append(res.get('elapsed', 0))
             last_per_link_tmp = res.get('per_link_tmp') or last_per_link_tmp
             last_title_dir = res.get('title_dir') or last_title_dir
+            last_title_prefix = res.get('safe_title') or last_title_prefix
 
             if res['status'] == 'done' and res.get('files'):
                 overall['success'] += 1
@@ -233,7 +235,7 @@ def main():
 
         # Move any files that finished after the wait into the title folder
         if last_per_link_tmp and last_title_dir and os.path.isdir(last_per_link_tmp):
-            moved_after_wait = utils.move_files_to_parent(last_per_link_tmp, last_title_dir)
+            moved_after_wait = utils.move_files_to_parent(last_per_link_tmp, last_title_dir, title_prefix=last_title_prefix)
             if moved_after_wait:
                 print('   [Moved] Moved files to title folder after final wait:', moved_after_wait)
 

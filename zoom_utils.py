@@ -37,7 +37,10 @@ PERF_POLL_INTERVAL = 0.5
 _net_re = re.compile(r'\.(mp4|vtt)(\?|$)', re.IGNORECASE)
 
 def sanitize(name):
-    return ''.join(c if (c.isalnum() or c in (' ', '_', '-')) else '_' for c in name).strip()
+    # Replace spaces with underscores
+    name = name.replace(' ', '_')
+    # Strip characters that are illegal in Windows filenames to prevent crashes, but carefully leave everything else alone (like commas)
+    return re.sub(r'[<>:"/\\|?*]', '', name).strip()
 
 
 def prepare_download_folder(driver, path):
@@ -88,13 +91,23 @@ def wait_for_first_file(src_tmp, timeout):
     return []
 
 
-def move_files_to_parent(src_folder, dest_folder):
+def move_files_to_parent(src_folder, dest_folder, title_prefix=None):
     moved = []
     for fname in list(os.listdir(src_folder)):
         if fname.endswith('.crdownload'):
             continue
         src = os.path.join(src_folder, fname)
         base_fname = fname
+        
+        if title_prefix:
+            # Try to replace the standard Zoom prefix 'GMT<timestamp>..._Recording' with our title_prefix
+            new_fname = re.sub(r'^GMT\d{8}-\d+(?:_Recording)?', title_prefix, base_fname, flags=re.IGNORECASE)
+            if new_fname == base_fname:
+                # If the string wasn't modified (doesn't follow standard Zoom pattern), default to prepending
+                base_fname = f"{title_prefix}_{base_fname}"
+            else:
+                base_fname = new_fname
+                
         dest_path = os.path.join(dest_folder, base_fname)
         if os.path.exists(dest_path):
             base, ext = os.path.splitext(base_fname)

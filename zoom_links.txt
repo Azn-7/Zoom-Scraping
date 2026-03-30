@@ -1,1 +1,11 @@
-Doc1	https://mpc-edu.zoom.us/rec/share/6vZ6KwBaAXRNhC1Rujp3So8UIHU9-NM1mhQv_Eir0vKrjXfHCMB9NaXNAX6XL7iQ.bIhvPfoQcxz8xPK5?startTime=1771887399000
+Lab 2 - Part A - Bag Class, Inheritance, Composition	https://mpc-edu.zoom.us/rec/share/xTTCTnslEvcqu3LXKKHFhcSOOdAWWOEdrNTEF3ZU_flcteSrindrB_hORHr0kOw.hqTa7wsOYWehusXi?startTime=1770244736000
+Stacks, Interfaces, Wrapper Classes, Stack RPN Processor	https://mpc-edu.zoom.us/rec/share/Ct4YZnqbiVkLQoCwNLakcZ4-GTi4P4qcJiQ_jW1rtU4FoYgBmem_Gy3zAP95FOQZ.ZmoAki2pyq4QQvaa?startTime=1770677707000
+Array Algorithms	https://mpc-edu.zoom.us/rec/share/kbVv1N_Ypc2JnSFvQOfmAf_mBJHP00fZm2GZqYmmUrgGM4NLVrhzVWDigW_2GiI.1D536U0DNrxpYJHB?startTime=1770849767000
+Linked Lists	https://mpc-edu.zoom.us/rec/share/owkjOX0u-i9hVo8Ygf0hWDbx__-2yHyGKcxUp0bY3XGbF_JYuulKbc4xC4gX1O0.2HJsJND1pn3HdDNn?startTime=1771454270000
+Test1 Preview, Grading, Test 1 Replacement Questions	https://mpc-edu.zoom.us/rec/share/M8FYMYq4TQ8jsYCVYbR8scLPe4PZ0c3otZyID1wzzqh2qnMuUDggVTyBQfIBeP1M.wTnTAfRw5nnfQSS0?startTime=1771886615000
+Lab 4A - Queues	https://mpc-edu.zoom.us/rec/share/6vZ6KwBaAXRNhC1Rujp3So8UIHU9-NM1mhQv_Eir0vKrjXfHCMB9NaXNAX6XL7iQ.bIhvPfoQcxz8xPK5?startTime=1771887399000
+Lab 4B - Lists	https://mpc-edu.zoom.us/rec/share/tKwYmWx_2htl_DRon1C1yWrOOO70DUayolJB7guwBMOo4H62sWJVeu3RaiFxPhst.kLO6KpO2F3CbrIDp?startTime=1772059455000
+Practice Test 1 Solutions Review	https://mpc-edu.zoom.us/rec/share/4WSbfNWjTjPrSNkCEUMyZkwHCX9EiQHJIbvDhegr53wRukFLReLSSDHgknCd2fVb.F-Z5I69FQ1pzZZD9?startTime=1772498364000
+Accounts set up in older assessment drill platform	https://mpc-edu.zoom.us/rec/share/4WSbfNWjTjPrSNkCEUMyZkwHCX9EiQHJIbvDhegr53wRukFLReLSSDHgknCd2fVb.F-Z5I69FQ1pzZZD9?startTime=1772497972000
+Misc items on zyBooks and Practice Test 1	https://mpc-edu.zoom.us/rec/play/OWz4l8QkT5bZVM-Bsc15pSWYIf5D9A7knwl3QqWc75vLoZKNvQr9mQfV6sTq6QtD5fXEtwNt7xvLlwdW.JG1lp9fr1Hld9OXg?autoplay=true&startTime=1772501570000
+Lab 5A - Building the ArrayBag Class	https://mpc-edu.zoom.us/rec/share/ENb0rsMsAAfJBSNo0u3GqH3XhpXQTGFY4RMMtQojXXgQIQBZtK7Ty0a_RffRVmnY.eFMTBmGmeZcpM4yY?startTime=1773092652000
