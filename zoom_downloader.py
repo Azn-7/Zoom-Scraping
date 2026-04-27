@@ -6,6 +6,9 @@ from urllib.parse import urlparse, unquote
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 import zoom_utils as utils
@@ -23,7 +26,7 @@ ACTIVE_DOWNLOAD_TIMEOUT_SECONDS = 1200
 
 # Extensions to remove after downloads complete
 # To disable deletion leave as an empty list: REMOVE_EXTENSIONS = []
-REMOVE_EXTENSIONS = ['.m4a', '.vtt']   # e.g. ['.m4a', '.tmp']
+REMOVE_EXTENSIONS = []   # e.g. ['.m4a', '.tmp']
 
 INPUT_TXT = 'zoom_links.txt'
 BASE_OUTPUT_PATH = r'C:\Users\Azn\Downloads\Results'
@@ -88,30 +91,50 @@ def download_zoom_recording(driver, title: str, link: str, file_index: int) -> d
     link_start_time = time.time()
 
     driver.get(link)
+
+    # Wait for either the "does not exist" error text or an actionable control to appear in the DOM.
+    # driver.get() resolves on the browser load event, but Zoom is a JS SPA that renders content
+    # after that — checking page_source immediately is unreliable.
+    _DELETED_TEXT = 'This recording does not exist.'
+    try:
+        WebDriverWait(driver, 15).until(EC.any_of(
+            EC.text_to_be_present_in_element((By.TAG_NAME, 'body'), _DELETED_TEXT),
+            EC.presence_of_element_located((By.XPATH,
+                "//button[contains(.,'Download')] | //button[@aria-label='Download']"
+                " | //button[normalize-space()='Continue'] | //a[normalize-space()='Continue']"))
+        ))
+    except Exception:
+        pass  # timed out; fall through to existing download logic which has its own timeouts
+
+    if _DELETED_TEXT in driver.page_source:
+        try:
+            if os.path.isdir(temporary_download_dir):
+                shutil.rmtree(temporary_download_dir)
+        except Exception:
+            pass
+        return {'status': 'deleted', 'elapsed': time.time() - link_start_time, 'files': [], 'temporary_download_dir': None, 'destination_directory': None, 'safe_title': safe_title}
+
     utils.click_with_retries(driver, [
         "//button[normalize-space()='Continue']",
         "//a[normalize-space()='Continue']",
         "//*[contains(translate(.,'CONTINUE','continue'),'continue')]"
     ], timeout=max(utils.PAGE_LOAD_WAIT, 10))
 
-    host_prefers_exhaustive = 'mpc-edu.zoom.us' in link.lower()
     clicked_download = False
 
-    if host_prefers_exhaustive:
+    print("Attempting to download...")
+    clicked_download = utils.click_with_retries(driver, [
+        "//button[@aria-label='Download']",
+        "//button[contains(.,'Download')]",
+        "//a[contains(.,'Download')]"
+        ], timeout=max(utils.AFTER_CONTINUE_WAIT + 6, 15))
+    if not clicked_download:
         end_time = time.time() + 15
         while time.time() < end_time:
             clicked_download = utils.force_click_download_button(driver, temporary_download_dir)
             if clicked_download:
                 break
             time.sleep(1.0)
-    else:
-        clicked_download = utils.click_with_retries(driver, [
-            "//button[@aria-label='Download']",
-            "//button[contains(.,'Download')]",
-            "//a[contains(.,'Download')]"
-        ], timeout=max(utils.AFTER_CONTINUE_WAIT + 6, 15))
-        if not clicked_download:
-            clicked_download = utils.force_click_download_button(driver, temporary_download_dir)
 
     if not clicked_download:
         return {'status': 'skipped', 'elapsed': time.time() - link_start_time, 'files': [], 'temporary_download_dir': temporary_download_dir, 'destination_directory': destination_directory, 'safe_title': safe_title}
@@ -199,8 +222,9 @@ def main():
 
     driver = initialize_webdriver()
     elapsed_times = []
-    overall_progress = {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0}
+    overall_progress = {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0, 'deleted': 0}
     unsuccessful_links = []
+    deleted_links = []
 
     links_processed_count = 0
     last_temporary_dir = None
@@ -220,6 +244,10 @@ def main():
             if download_result['status'] == 'done' and download_result.get('files'):
                 overall_progress['success'] += 1
                 print('   [Success] Downloaded:', download_result.get('files'))
+            elif download_result['status'] == 'deleted':
+                overall_progress['deleted'] += 1
+                print('   [Deleted] Recording does not exist')
+                deleted_links.append({'title': title, 'link': link, 'reason': 'This recording does not exist.'})
             elif download_result['status'] == 'skipped':
                 overall_progress['skipped'] += 1
                 print('   [Skipped] Skipped (no download control)')
@@ -268,10 +296,15 @@ def main():
     print(f"  Success: {overall_progress['success']}")
     print(f"  Skipped: {overall_progress['skipped']}")
     print(f"  Failed: {overall_progress['failed']}")
+    print(f"  Failed (Deleted Links): {overall_progress['deleted']}")
     if unsuccessful_links:
         print('\nFailed links:')
         for failed_link_record in unsuccessful_links:
             print(' -', failed_link_record)
+    if deleted_links:
+        print('\nFailed (Deleted Links):')
+        for deleted_link_record in deleted_links:
+            print(' -', deleted_link_record)
 
 
 if __name__ == '__main__':
