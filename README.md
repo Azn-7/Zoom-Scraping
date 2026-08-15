@@ -1,3 +1,5 @@
+### REWORK TIME
+
 ### Table of Contents
 
 - Introduction
@@ -24,7 +26,7 @@ The program is designed to take any zoom links that redirects to a zoom recordin
 
 <img src = "images/Diagram of zoomDownloader.py.png">
 
-As of the current moment, the program does not have a single download folder and requires document titles to function. A solution to this, if wished, is included in "I: DocsToSheet" below step 14.
+Whether the program organizes downloads into per-document subfolders or drops them all into a single flat folder depends on how "zoom_links.txt" is formatted (see the note under "II: ZoomDownloader" below). A solution to generating that file, if wished, is included in "I: DocsToSheet" below step 14.
 
 > How long may this take to function?
 
@@ -34,7 +36,7 @@ Expected time if following the two step instructions (DocsToSheet & ZoomDownload
 
 > What to expect?
 
-After running the program, it'll be able to download all files from each zoom recordings and output the files to a designated file PATH. It'll create a subfolder of each document titles and saves each zoom recording files from whichever document it was founded in. A few things to note as well...
+After running the program, it'll be able to download all files from each zoom recordings and output the files to a designated file PATH. If "zoom_links.txt" includes a Document Title column, it'll create a subfolder per document and name each file after its hyperlink title; otherwise all files download flat into that PATH, prefixed with their hyperlink title. A few things to note as well...
 
 - You can modify which files to exclude (such as .m4a and .vtt)
 - You may run this program headless if wishing to see how the program function
@@ -99,6 +101,20 @@ If you're someone who needs to download the files attached to the many zoom reco
 1.  Back in the ZoomScraping folder, in subfolder "ZoomDownloader", replace the entire text found in "zoom_links.txt" with the copied text from the google sheets. The .txt already has an example of how the formating should look like. If done correctly, the order should remain the same.
 2.  From this point, we can move on part II of the program and download all zoom recordings.
 
+#### A note on zoom_links.txt formatting
+
+`zoom_links.txt` is tab-separated, and each line is auto-detected by how many tab-separated columns it has — you can mix both formats in the same file if you need to.
+
+- **2 columns** — `Hyperlink Title<TAB>Zoom Link`. All files download into a single flat `BASE_OUTPUT_PATH` folder.
+- **3 columns** — `Document Title<TAB>Hyperlink Title<TAB>Zoom Link`. A subfolder named after the Document Title is created inside `BASE_OUTPUT_PATH`.
+
+        Course Overview	https://zoom.us/rec/share/...
+        CSCI-10A-Video-Links-F25	Course Overview	https://zoom.us/rec/share/...
+
+Either way, each downloaded file is renamed to `Hyperlink Title (SPECIAL) (original filename).ext` — e.g. `Course Overview (Video) (GMT20250819-175548_Recording_as_1920x1080).mp4`. `SPECIAL` is `Video` for the 1920x1080 stream, `Camera` for the 640x360 stream, or omitted for anything else (audio, transcript); the original Zoom filename is kept in parentheses for reference.
+
+Any header row (e.g. a first line like `Document Title  Hyperlink Title  Zoom Link`) is skipped automatically, since its link column won't be an actual URL.
+
 <!-- ———————————————————————————————— II: ZoomDownloader ———————————————————————————————— -->
 
 ## II: ZoomDownloader
@@ -112,20 +128,30 @@ If you're someone who needs to download the files attached to the many zoom reco
 
         pip install selenium webdriver-manager requests
 
+> The program automates a Chromium-based browser via Selenium — no Selenium-specific browser install is required beyond having one of the two available. Which one it uses is controlled by the "BROWSER" variable near the top of "zoom_downloader.py":
+>
+> - `BROWSER = 'edge'` (default) — uses Microsoft Edge, which comes pre-installed on Windows, so there's nothing else to set up.
+> - `BROWSER = 'chrome'` — uses Google Chrome or Chromium. This is the better option on Linux, where Chromium is usually just a package-manager install away (e.g. `apt install chromium` / `dnf install chromium`), while Edge is not.
+
 5.  Change the designation to the PATH of the ZoomDownloader folder. As such, an example would be
 
         cd "C:\Users\Name\Downloads\ZoomScraping\ZoomDownloader"
 
-6.  In the "zoom_downloader.py" file, you'll need to change the PATH of where the files will be downloaded to. On line 26, change "(PATH)" to the path you like to have it be downloaded to. An example would look like
+6.  (Optional) By default, files download into a "Results" folder created right next to "zoom_downloader.py". If you'd rather use a different location, change the "BASE_OUTPUT_PATH" variable near the top of "zoom_downloader.py" to the path you like, such as
 
         BASE_OUTPUT_PATH = r'C:\Users\Name\Downloads\Results'
 
-7.  (Optional) You can modify which files should be excluded when downloading. On line 23 of "zoom_downloader.py", you can initiize the "REMOVE_EXTENSIONS" with any file extensions you wish to be excluded. There are comments that'll show examples if needed.
+7.  (Optional) You can modify which files should be excluded when downloading. In the "REMOVE_EXTENSIONS" variable near the top of "zoom_downloader.py", you can initiize it with any file extensions you wish to be excluded. There are comments that'll show examples if needed.
 
 8.  When ready to parse all zoom links, run this command
 
         python zoom_downloader.py
 
-9.  From this point, the program should work as intended and may take a while before finishing downloading files. You should be able to find the outputted results to the PATH you set on step 6.
+9.  From this point, the program should work as intended and may take a while before finishing downloading files. You should be able to find the outputted results in the "Results" folder next to "zoom_downloader.py" (or the PATH you set on step 6).
 
 > Console will output all errors related to downloading a file and will also show any links that had trouble doing so.
+
+Every run also writes diagnostics to a "Debug" folder next to "zoom_downloader.py":
+- **Debug/Snapshot** — a screenshot of the page at the moment a link is skipped or fails, named "Failure at (date/time) for (hyperlink title).png". Useful for cases where the failure reason isn't obvious from the console alone (e.g. the link turned out not to be a recording share page at all).
+- **Debug/Logs** — a full copy of everything printed to the console for that run, one file per run named by its start time.
+- **Debug/Finished Links.txt** — every link that's successfully downloaded, or been confirmed deleted, across every run. If "SKIP_FINISHED_LINKS" (near the top of "zoom_downloader.py") is left at its default of `True`, links already in this file are skipped on the next run instead of redone — handy for resuming after a crash or interruption without redoing completed work. Links that were skipped/failed aren't recorded, so they're always retried. Set it to `False` to always do a full run regardless of what's in the file (new completions still get recorded either way).
