@@ -20,48 +20,34 @@ import zoom_utils as utils
 # ======================== CONFIGURATION VARIABLES =============================
 # ==============================================================================
 
-# Set HEADLESS = Run with visible browser
+# Run with a visible browser window (set True for headless). See README.
 utils.HEADLESS = False
 
-# How many seconds to wait, per link, for a still-in-progress download to finish before giving up on
-# it. By default, this is set to 20 minutes. This should be increased should you either download large
-# files or have slow internet — set to 0 to disable this wait entirely.
+# Max seconds to wait, per link, for a slow/large download to finish. 0 disables the wait. See README.
 ACTIVE_DOWNLOAD_TIMEOUT_SECONDS = 1200
 
-# Extensions to remove after downloads complete
-# To disable deletion leave as an empty list: REMOVE_EXTENSIONS = []
-REMOVE_EXTENSIONS = []   # e.g. ['.m4a', '.tmp']
+# File extensions to delete after downloading, e.g. ['.m4a', '.vtt']. Empty list disables this.
+REMOVE_EXTENSIONS = []
+
+# Skip keeping Zoom's screen-share-only recording layout for every download. See README.
+SKIP_SCREEN_SHARE_ONLY_VIDEO = False
 
 INPUT_TXT = 'zoom_links.txt'
 BASE_OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Results')
 
-# Where diagnostic output goes: a screenshot of the page whenever a link is skipped/fails (helps
-# figure out why after the fact), and a full copy of everything printed to the console for the run.
+# Where run diagnostics (screenshots, logs) get written. See README's Output section.
 DEBUG_SNAPSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Debug', 'Snapshot')
 DEBUG_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Debug', 'Logs')
 
-# If True, links already recorded in FINISHED_LINKS_FILE (a successful download, or a confirmed-deleted
-# recording, from any previous run) are skipped instead of re-processed — handy for resuming after a
-# crash/interruption without redoing work that already finished. Links that were skipped/failed last
-# time are NOT recorded, so they're always retried. Set to False to always do a full run regardless of
-# what's in that file (new completions still get recorded either way, for next time).
+# Skip links already completed in a previous run, for resuming after a crash. See README.
 SKIP_FINISHED_LINKS = True
 FINISHED_LINKS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Debug', 'Finished Links.txt')
 
-# How downloaded files are renamed. Mix and match these tokens in any order — every token is a bare
-# value, so add your own spaces/parentheses/etc. around them as you like. If a token like {special}
-# renders empty, any leftover double spaces or empty "()" around it get cleaned up automatically.
-#   {title}    e.g. "Course_Overview"
-#   {special}  e.g. "Video", "Camera", or ""
-#   {original} e.g. "GMT20250819-175548_Recording_as_1920x1080"
-#   {ext}      e.g. ".mp4"
-# Default template renders as: Course_Overview (Video) (GMT20250819-175548_Recording_as_1920x1080).mp4
-FILENAME_TEMPLATE = "{title} ({special}) ({original}){ext}"
+# How downloaded files are renamed (the original extension is always kept). Tokens: {title},
+# {special}, {original} — see README.
+FILENAME_TEMPLATE = "{title} ({special}) ({original})"
 
-# Which Chromium-based browser to automate: 'edge' or 'chrome'.
-# - 'edge': Microsoft Edge. Ships pre-installed on Windows, so nothing extra to install.
-# - 'chrome': Google Chrome, or Chromium (the 'chromium'/'chromium-browser' package that's
-#   readily available via most Linux package managers). Requires one of those to already be installed.
+# Which Chromium-based browser to automate: 'edge' or 'chrome'. See README.
 BROWSER = 'edge'
 
 # ==============================================================================
@@ -120,12 +106,15 @@ def initialize_webdriver():
 def parse_zoom_links_file(file_path: str) -> list:
     """Reads the zoom links text file and returns a list of entries, in order.
 
-    Supports two tab-separated formats, auto-detected per line:
+    Supports three tab-separated formats, auto-detected per line:
+      - 1 column: Zoom Link
+        No title given, so nothing to rename with — the file keeps its original Zoom filename.
+        Downloaded files land in the flat BASE_OUTPUT_PATH folder.
       - 2 columns: Hyperlink Title <TAB> Zoom Link
-        Downloaded files land in the flat BASE_OUTPUT_PATH folder, prefixed with the title.
+        Downloaded files land in the flat BASE_OUTPUT_PATH folder, renamed per FILENAME_TEMPLATE.
       - 3 columns: Document Title <TAB> Hyperlink Title <TAB> Zoom Link
         Downloaded files land in a BASE_OUTPUT_PATH\\<Document Title> subfolder, renamed
-        exactly to the hyperlink title (plus original extension).
+        per FILENAME_TEMPLATE.
 
     Header rows (where the link column isn't actually a URL) are skipped automatically.
     """
@@ -138,6 +127,10 @@ def parse_zoom_links_file(file_path: str) -> list:
             elif len(split_line) == 2:
                 document = None
                 title, link = (part.strip() for part in split_line)
+            elif len(split_line) == 1:
+                document = None
+                title = None
+                link = split_line[0].strip()
             else:
                 continue
             if not link.lower().startswith('http'):
@@ -176,7 +169,9 @@ class _Tee:
 
 def download_zoom_recording(driver, document: str, title: str, link: str, file_index: int) -> dict:
     """Navigates to the Zoom recording payload, detects the download button, and extracts files locally."""
-    safe_title = utils.sanitize(title).replace(' ', '_')
+    # No title (bare 1-column format) means nothing to rename with — move_downloads_to_destination
+    # already leaves a file's original name untouched whenever title_prefix is falsy.
+    safe_title = utils.sanitize(title).replace(' ', '_') if title else None
     rename_exact = document is not None
     destination_directory = os.path.join(BASE_OUTPUT_PATH, utils.sanitize(document)) if document else BASE_OUTPUT_PATH
     os.makedirs(destination_directory, exist_ok=True)
@@ -414,6 +409,11 @@ def download_zoom_recording(driver, document: str, title: str, link: str, file_i
         for file_removed in file_extensions_removed:
             print('   [REMOVE_EXTENSIONS] Removed from title folder:', file_removed)
 
+    if SKIP_SCREEN_SHARE_ONLY_VIDEO:
+        screen_share_files_removed = utils.remove_screen_share_only_files(destination_directory)
+        for file_removed in screen_share_files_removed:
+            print('   [SKIP_SCREEN_SHARE_ONLY_VIDEO] Removed:', file_removed)
+
     try:
         # attempt to clean up the temporary directory if it's now empty
         if not os.listdir(temporary_download_dir):
@@ -444,7 +444,8 @@ def main(run_timestamp):
         for links_processed_count, entry in enumerate(entries, start=1):
             document, title, link = entry['document'], entry['title'], entry['link']
             overall_progress['total'] += 1
-            location_label = f'{document} / {title}' if document else title
+            display_title = title or link  # bare 1-column entries have no title at all
+            location_label = f'{document} / {display_title}' if document else display_title
             print(f'\n[{links_processed_count}/{total_links_count}] {location_label} -> {link}')
 
             if SKIP_FINISHED_LINKS and link in finished_links:
@@ -476,13 +477,13 @@ def main(run_timestamp):
                 print('   [Skipped] Skipped (no download control)')
                 unsuccessful_links.append({'document': document, 'title': title, 'link': link, 'reason': 'No download button'})
                 failed_links_log.append({'document': document, 'title': title, 'link': link, 'status_label': 'Skipped'})
-                _save_failure_snapshot(driver, title)
+                _save_failure_snapshot(driver, display_title)
             else:
                 overall_progress['failed'] += 1
                 print('   [Failed] Failed to capture files')
                 unsuccessful_links.append({'document': document, 'title': title, 'link': link, 'reason': 'Missing files after attempts'})
                 failed_links_log.append({'document': document, 'title': title, 'link': link, 'status_label': 'Failed'})
-                _save_failure_snapshot(driver, title)
+                _save_failure_snapshot(driver, display_title)
 
             average_time_per_link = sum(elapsed_times) / len(elapsed_times) if elapsed_times else 0
             remaining_links_count = max(0, total_links_count - links_processed_count)

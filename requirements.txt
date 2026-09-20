@@ -1,0 +1,7 @@
+# Zoom Downloader (zoom_downloader.py / zoom_utils.py)
+selenium
+webdriver-manager
+requests
+
+# Python Zoom Link Aggregator prototype ((Python Script) Zoom Link Aggregator/zoom_link_aggregator.py)
+beautifulsoup4

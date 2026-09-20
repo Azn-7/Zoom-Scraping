@@ -1,4 +1,4 @@
-Assignment Title	Hyperlink Title     Zoom Link
+Folder Title	Meeting Title     Zoom Link
 CSCI-10A-Video-Links-F25	Course Overview	https://mpc-edu.zoom.us/rec/share/5pwcsWnX5Xo9xc5VAbQqNLVpBnbFiaEmZT11YUQjOM0LTy8eQoyVFnJL_hJH_SSp.zDxJCEDE_oB0W6Ti?startTime=1755626148000
 CSCI-10A-Video-Links-F25	Lec 1A - Hello World in BlueJ - Errors and Debugging	https://mpc-edu.zoom.us/rec/share/5pwcsWnX5Xo9xc5VAbQqNLVpBnbFiaEmZT11YUQjOM0LTy8eQoyVFnJL_hJH_SSp.zDxJCEDE_oB0W6Ti?startTime=1755628193000
 CSCI-10A-Video-Links-F25	Lec1B- More printing, Variables, Date.java setup,	https://mpc-edu.zoom.us/rec/share/uo9Nf7hVRQgX70xJIy6_P5S7UuJXluK1eYwljg6SSgwSURZQszTTIKpDfrKY8fUY.H0P4h_iIzev5xqpn?startTime=1755797809000

@@ -1,157 +1,150 @@
-### REWORK TIME
+# Zoom Scraping
 
-### Table of Contents
+Bulk-downloads the files (video, audio, transcript) attached to a list of Zoom recording links, using Selenium to automate the same "click Download" steps a person would do by hand. Useful when you have many lecture recordings to save locally and don't want to click through each one individually.
 
-- Introduction
-  - How does it work?
-  - How long may this take to function?
-  - What to expect?
-  - Who is it intended for?
-- I: DocsToSheet (Retreiving zoom links from google docs)
-- II: ZoomDownloader
+## Getting Started
 
-<!-- ———————————————————————————————— Introduction ———————————————————————————————— -->
+1. Install [Python](https://www.python.org/downloads/windows/) (check "Add python.exe to PATH" during setup).
+2. Open a terminal in this folder and install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Put your links in `zoom_links.txt` — even one bare link per line works, no titles or organizing required. See [format](#zoom_linkstxt-format) below for the other options.
+4. Run it:
+   ```
+   python zoom_downloader.py
+   ```
+5. Downloaded files land in `Results/` next to `zoom_downloader.py`.
 
-# Introduction:
+Don't have your links yet? If they're scattered across a batch of Google Docs, there's an optional helper script for that — see [Extracting links from Google Docs](#optional-extracting-links-from-google-docs) near the bottom.
 
-Zoom Scraping was a projected develop with the intention to retrieve zoom recordings from google docs and parsing all links to be downloadable mp4/m4a files. As there can be many zoom recordings that may need of its videos to be downloaded and you might not be the owner of the video uploaded, it'll help allow you to automate the process of downloading any downloadable files from any zoom recordings. This project involves a two step process and the first one can be skipped if the zoom links are already obtained.
+---
 
-If you run to any problems or have any questions, feel free to email me at ttiet777@gmail.com.
+## zoom_links.txt format
 
-### Some questions you may have answered here
+The file is tab-separated. Each line is auto-detected by how many columns it has, so you can mix formats freely in the same file.
 
-> How does it work?
+| Columns | Format | Behavior |
+|---|---|---|
+| 1 | `Zoom Link` | Just want to mass-download links with no organizing or renaming? This is it. All files download into one flat `Results/` folder, keeping their original Zoom filename as-is. |
+| 2 | `Hyperlink Title` `Zoom Link` | All files download into one flat `Results/` folder, renamed after the title. |
+| 3 | `Document Title` `Hyperlink Title` `Zoom Link` | A subfolder is created per Document Title inside `Results/`, files renamed after the title. |
 
-The program is designed to take any zoom links that redirects to a zoom recording, and automatically downloads any files that the recording is able to provide. In a zoom recording on the top right, it may prompt an option to download the recordings .mp4 (video), .m4a (audio only), or .vtt (transcript). Normally, a user would have to visit the recording link, and click on the download button. But with the help of SeleniumLibrary, it allows the program to act as the user itself, and follow the same steps as a person would, but automated. This program will organize all downloaded files to its respective folder managed by the user, a visual example shown is below.
+```
+https://zoom.us/rec/share/...
+Course Overview	https://zoom.us/rec/share/...
+CSCI-10A-Video-Links-F25	Course Overview	https://zoom.us/rec/share/...
+```
 
-<img src = "images/Diagram of zoomDownloader.py.png">
+A header row (e.g. `Document Title  Hyperlink Title  Zoom Link`) is skipped automatically — its link column won't be a real URL.
 
-Whether the program organizes downloads into per-document subfolders or drops them all into a single flat folder depends on how "zoom_links.txt" is formatted (see the note under "II: ZoomDownloader" below). A solution to generating that file, if wished, is included in "I: DocsToSheet" below step 14.
+For the 2- and 3-column formats, every downloaded file is renamed to `Hyperlink Title (SPECIAL) (original filename).ext`, e.g. `Course Overview (Video) (GMT20250819-175548_Recording_1920x1080).mp4`. `SPECIAL` reflects which of Zoom's recording layouts the file is — `Video` (the default combined view), `Screen Share` (screen/app share only), `Camera` (active-speaker only), `Gallery` (gallery view only) — or omitted if none of those apply. The naming pattern is fully configurable — see `FILENAME_TEMPLATE` below.
 
-> How long may this take to function?
+Zoom sometimes exports both the default `Video` file and a separate `Screen Share`-only file for the same recording — they're not guaranteed identical, but can look very similar if the presenter's camera contributed little to the frame. Set `SKIP_SCREEN_SHARE_ONLY_VIDEO = True` (see Configuration below) if you'd rather not keep that one.
 
-Expected time if following the two step instructions (DocsToSheet & ZoomDownloader) would be 30 minutes minimum. Each recordings being parsed will take at least 40 seconds per link. As such, the estimated time for the overall download process follows this formula
+---
 
-    40 * (Number of Links) = Minimum of the total time
+## Configuration
 
-> What to expect?
+All of these live near the top of `zoom_downloader.py`.
 
-After running the program, it'll be able to download all files from each zoom recordings and output the files to a designated file PATH. If "zoom_links.txt" includes a Document Title column, it'll create a subfolder per document and name each file after its hyperlink title; otherwise all files download flat into that PATH, prefixed with their hyperlink title. A few things to note as well...
+| Variable | Default | What it does |
+|---|---|---|
+| `BROWSER` | `'edge'` | `'edge'` (nothing to install on Windows) or `'chrome'` (better on Linux, where Chromium is a package-manager install away). |
+| `utils.HEADLESS` | `False` | Set `True` to run without a visible browser window. |
+| `BASE_OUTPUT_PATH` | `Results/` next to the script | Where downloaded files go. |
+| `INPUT_TXT` | `'zoom_links.txt'` | Which file to read links from. |
+| `FILENAME_TEMPLATE` | `"{title} ({special}) ({original})"` | How downloaded files are renamed — see token reference below. |
+| `REMOVE_EXTENSIONS` | `[]` | File extensions to delete after downloading, e.g. `['.m4a', '.vtt']`. |
+| `SKIP_SCREEN_SHARE_ONLY_VIDEO` | `False` | Skip keeping Zoom's `Screen Share`-only recording layout (see [format](#zoom_linkstxt-format) above). |
+| `SKIP_FINISHED_LINKS` | `True` | Skip links already recorded as done in `Debug/Finished Links.txt` — lets you resume after a crash without redoing completed work. Set `False` to force a full run. |
+| `ACTIVE_DOWNLOAD_TIMEOUT_SECONDS` | `1200` (20 min) | Max time to wait, per link, for a slow/large download to finish before giving up. `0` disables the wait. |
 
-- You can modify which files to exclude (such as .m4a and .vtt)
-- You may run this program headless if wishing to see how the program function
-- When it downloads a file, it
+`FILENAME_TEMPLATE` tokens — mix, match, or omit any of them (each is a bare value, so add your own spaces/parentheses around whichever you keep):
 
-> Who is this intended for?
+| Token | Example |
+|---|---|
+| `{title}` | `Course_Overview` |
+| `{special}` | `Video`, `Screen Share`, `Camera`, `Gallery`, or empty |
+| `{original}` | `GMT20250819-175548_Recording_1920x1080` |
 
-If you're someone who needs to download the files attached to the many zoom recordings you may have, this is for you! This is especially important for those who records many of their lectures on zoom but haven't locally saved their recordings already, such as online professors.
+The original file extension is always kept — there's no `{ext}` token, since there's no real reason to move or drop it. If a token like `{special}` renders empty, any leftover double spaces or empty `()` left behind get cleaned up automatically, so the default template still renders cleanly either way. And if a template omits (or renders empty for) both `{title}` and `{original}`, leaving nothing meaningful to build a name from, the original Zoom filename is kept as-is instead of risking an empty or colliding filename.
 
-<!-- ———————————————————————————————— I: DocsToSheet ———————————————————————————————— -->
+Ctrl+C stops cleanly at any point — the browser closes and a partial summary prints for whatever was completed.
 
-## I: DocsToSheet (Retreiving zoom links from google docs)
+---
 
-> This step allows you to retrieve all zoom links from google doc links, outputting the links to a google sheet for you to copy and paste into a .txt file. **If you already have the zoom links you wish to parse, you may skip this step.**
+## Output
 
-1.  Go to [Google App Scripts](https://script.google.com/home), and log in
-2.  Create a new project on the top left
-3.  In "Code.gs" (the script you'll already be on), paste the code found in the **"(Google Apps Script Code) DocsToSheet.txt"** file. It'll be located in the same ZoomScraping folder
-4.  On Line 3 of the variable **"sheetName"**, you may change its name to whichever you may like to call it.
+**`Results/`** — your downloaded files, organized per the format table above.
 
-        (Ex.) const sheetName = "Docs to Zoom Links";
+**`Debug/`** — written on every run (the `Snapshot`/`Logs` locations are configurable via `DEBUG_SNAPSHOT_DIR`/`DEBUG_LOG_DIR`):
 
-#### Now that the script is ready, we need to give the script the links needed to parse. It'll be using a .txt file and will be uploaded uploaded to your google drive temporarily
+| Path | Contents |
+|---|---|
+| `Debug/Logs/(timestamp).txt` | Full copy of everything printed to the console for that run. |
+| `Debug/Logs/(timestamp) Failed Links.txt` | Only the links that were skipped, failed, or confirmed deleted, grouped by Document Title, each line tagged with why: `(Deleted) Title: Link`. Not written if nothing went wrong. |
+| `Debug/Snapshot/Failure at (time) for (title).png` | A screenshot of the page at the moment a link is skipped or fails — helpful when the reason isn't obvious from the console (e.g. the link wasn't actually a recording share page). |
+| `Debug/Finished Links.txt` | Every link successfully downloaded or confirmed deleted, across all runs. Used by `SKIP_FINISHED_LINKS`. |
 
-> **Before continuing, ensure all google docs wanting to be parsed can be publicably viewed!**
+---
 
-5.  Create a .txt file and paste all of your google docs you wish for the script to parse. The .txt may look like this, with each link having its own line.
+## Running it again
 
-        https://docs.google.com/document/d/(1)/edit?usp=sharing
-        https://docs.google.com/document/d/(2)/edit?usp=sharing
-        https://docs.google.com/document/d/(3)/edit?usp=sharing
-        https://docs.google.com/document/d/(4)/edit?usp=sharing
+A few things worth knowing before you re-run the program on a `zoom_links.txt` you've already run before:
 
-6.  Upload the .txt to your google drive
-7.  Once done, change the sharability to public and copy the link
-8.  Returning back to the script, on line 2, change the initialization of publicDriveLink with the copied link.
+- **Resuming picks up where you left off, by design.** With `SKIP_FINISHED_LINKS` at its default `True`, any link already recorded in `Debug/Finished Links.txt` — successfully downloaded, or confirmed deleted — is skipped instead of redone. This is what makes it safe to just re-run after a crash or a Ctrl+C partway through; skipped/failed links are never recorded, so those always get retried.
+- **To force a one-off full re-run without losing that history**, set `SKIP_FINISHED_LINKS = False` for that run only, then switch it back. New completions still get recorded either way.
+- **To reset the resume history entirely**, delete `Debug/Finished Links.txt` (or just clear its contents) — nothing needs to be recreated by hand, it gets written fresh the next time a link finishes.
+- **Matching is done by the Zoom link itself, not the title.** If you edit a hyperlink title in `zoom_links.txt` after a link has already been downloaded, it's still correctly recognized as finished — but the file already on disk keeps its old name; it won't retroactively get renamed.
+- **A forced full re-run doesn't overwrite existing files in `Results/`.** If a rendered filename already exists there, the new download is saved alongside it with a `__dup1`, `__dup2`, etc. suffix rather than replacing it — so re-running with `SKIP_FINISHED_LINKS = False` on top of an already-populated `Results/` folder gets you duplicates, not clean re-downloads. Clear the relevant folder first if a true redo is what you want.
+- **`REMOVE_EXTENSIONS` and `SKIP_SCREEN_SHARE_ONLY_VIDEO` apply retroactively.** Both clean up the *entire* destination folder each time they run, not just the file(s) from the link currently being processed. So turning either on and running again — even with most links skipped via `SKIP_FINISHED_LINKS` — will also delete matching files left over from links you already downloaded in an earlier run, as soon as any other link sharing that folder gets processed.
+- **`Debug/Logs` and `Debug/Snapshot` accumulate indefinitely** — one log file per run, one screenshot per skipped/failed link, and nothing is ever deleted automatically. Nothing reads them back, so it's safe to clear old ones out by hand whenever you like.
+- **Adding new rows to `zoom_links.txt` between runs is safe** — previously finished links are skipped as usual, and only the new ones get processed.
 
-#### Not all zoom recordings will have the same domain name and thus, it is important to find all domain names that needs to be retreived.
+---
 
-9.  Check your google docs and find a few hyperlinks that redirects to a zoom recording. Take note of all the different domain names that leads to a zoom recording.
-    > No need to worry if you don't find all unique domain names. All links that were not included will also be included in the sheets and can be searched through if needed.
-10. When you believe you found all the domain names that redirects to a zoom recording, return back to the script.
-11. On Line 126, replace the value of the include function to the domain name you found. If there are more than one, add '||' and add another "link.include('domain name')".
+## Optional: Extracting links from Google Docs
 
-        (Ex.) 	return link.includes('zoom1.com');
-        		return link.includes('zoom1.com') || link.includes('zoom2.com');
+*Only relevant if your Zoom recording links are scattered across a batch of Google Docs rather than already in a list. If you already have your links, you don't need this.*
 
-### From this point, you may save the code (ctrl+s) and press run. You may be prompted to give the script permission to access your google sheets and google drive.
+Uses the bundled Python script, `(Python Script) Zoom Link Aggregator/zoom_link_aggregator.py`, to scan those Docs and export any Zoom links found in them to a CSV. It fetches each Doc's public export directly over HTTP, so there's no Google account, Apps Script project, or Google Drive upload involved — just this script, run locally, same as `zoom_downloader.py`. Its dependencies are already covered by `requirements.txt` (step 2 of [Getting Started](#getting-started)).
 
-> Should the script throw errors, ensure all google docs and the .txt file are publically accessible.
+> Every Google Doc you want scanned should be shared as "Anyone with the link can view" — this fetches them anonymously, with no login.
 
-12. When finished, the console will output a link to the newly created google sheet. In this, the first two column will contain the links of all found zoom links and from which doc it was located.
-13. If you wish to double check and ensure you didn't miss any other zoom links, on the right side of the two columns will also have links that did not include the domain name. You can search through and double check if are any links that may also be a zoom link.
+1. Create `(Python Script) Zoom Link Aggregator/google_docs.txt`, listing the Google Docs you want scanned, one URL per line:
+   ```
+   https://docs.google.com/document/d/(1)/edit?usp=sharing
+   https://docs.google.com/document/d/(2)/edit?usp=sharing
+   ```
+2. Run it:
+   ```
+   python "(Python Script) Zoom Link Aggregator/zoom_link_aggregator.py"
+   ```
+3. It writes `(Python Script) Zoom Link Aggregator/zoom_links_export.csv`, containing whichever columns are listed in `OUTPUT_COLUMNS` near the top of the script:
 
-> If you do find any excluded zoom link, feel free to add it back to the first two column, or add its domain name to the script (step 11) and rerun the program again with a different sheet name (step 4).
+   | Column | Used by zoom_downloader.py? |
+   |---|---|
+   | Document Title | Yes |
+   | Hyperlink Title | Yes |
+   | Zoom Link | Yes |
+   | Epoch | No — raw timestamp pulled from the link's `startTime` parameter |
+   | GMT | No — that timestamp reformatted |
+   | Redirect Link | No — a constructed `BASE_PATH`/`DOCUMENT_NAME`/... URL, only meaningful if you host recordings yourself at that pattern (both are configurable near the top of the script) |
 
-14. If satisfied, copy all document title and zoom links together. An example is shown below of how it should look like
-    <img src = "images/Example of Google Sheets Copy&Paste.png">
+   All six are included by default. If you only want the three `zoom_downloader.py` actually uses, trim `OUTPUT_COLUMNS` down to `['Document Title', 'Hyperlink Title', 'Zoom Link']` — the export will then only ever contain those three, so there's nothing to sort out by hand afterward.
 
-> If you wish to download all files into one document, rename everything below "Document Title" to a same name.
+4. Copy the CSV's contents into `zoom_links.txt`, then head back up to [Getting Started](#getting-started) to run the downloader. The export is comma-delimited (real CSV, so it opens cleanly in a spreadsheet), while `zoom_links.txt` is tab-delimited — so this is a copy/paste step, not a matter of just pointing `INPUT_TXT` at the CSV directly.
 
-1.  Back in the ZoomScraping folder, in subfolder "ZoomDownloader", replace the entire text found in "zoom_links.txt" with the copied text from the google sheets. The .txt already has an example of how the formating should look like. If done correctly, the order should remain the same.
-2.  From this point, we can move on part II of the program and download all zoom recordings.
+The script matches any link containing `zoom.us`, so every Zoom subdomain (`csumb.zoom.us`, `mpc-edu.zoom.us`, `cccconfer.zoom.us`, etc.) is picked up automatically — no per-domain setup needed. It catches both real hyperlinks and plain pasted URLs in the Doc body. Whether links placed in a Doc's header/footer (rather than the body) get picked up is currently unverified — if you have links there and they don't show up, that's likely why.
 
-#### A note on zoom_links.txt formatting
+A `DOC_LIST_FILE`/`OUTPUT_CSV` pair of variables near the top of the script control the input/output paths above, if you'd rather use different ones. A short delay between requests (`REQUEST_DELAY_SECONDS`) is built in so scanning a large batch of Docs doesn't look like abuse to Google.
 
-`zoom_links.txt` is tab-separated, and each line is auto-detected by how many tab-separated columns it has — you can mix both formats in the same file if you need to.
+*A previous version of this used a Google Apps Script instead (Google account, Apps Script project, and a Drive-hosted file list required) — it's no longer the recommended path, but the original script is still in the repo at `(Google Script) Zoom Link Aggregator/` for reference.*
 
-- **2 columns** — `Hyperlink Title<TAB>Zoom Link`. All files download into a single flat `BASE_OUTPUT_PATH` folder.
-- **3 columns** — `Document Title<TAB>Hyperlink Title<TAB>Zoom Link`. A subfolder named after the Document Title is created inside `BASE_OUTPUT_PATH`.
+---
 
-        Course Overview	https://zoom.us/rec/share/...
-        CSCI-10A-Video-Links-F25	Course Overview	https://zoom.us/rec/share/...
+## Notes
 
-Either way, each downloaded file is renamed to `Hyperlink Title (SPECIAL) (original filename).ext` — e.g. `Course Overview (Video) (GMT20250819-175548_Recording_as_1920x1080).mp4`. `SPECIAL` is `Video` for the 1920x1080 stream, `Camera` for the 640x360 stream, or omitted for anything else (audio, transcript); the original Zoom filename is kept in parentheses for reference.
-
-Any header row (e.g. a first line like `Document Title  Hyperlink Title  Zoom Link`) is skipped automatically, since its link column won't be an actual URL.
-
-<!-- ———————————————————————————————— II: ZoomDownloader ———————————————————————————————— -->
-
-## II: ZoomDownloader
-
-> From this point, we'll start downloading all files from zoom recordings
-
-1.  Install [latest Python version](https://www.python.org/downloads/windows/)
-2.  After running the installation file, ensure to checkmark "Add python.exe to PATH" before installing
-3.  Open Windows Terminal
-4.  Run this command
-
-        pip install selenium webdriver-manager requests
-
-> The program automates a Chromium-based browser via Selenium — no Selenium-specific browser install is required beyond having one of the two available. Which one it uses is controlled by the "BROWSER" variable near the top of "zoom_downloader.py":
->
-> - `BROWSER = 'edge'` (default) — uses Microsoft Edge, which comes pre-installed on Windows, so there's nothing else to set up.
-> - `BROWSER = 'chrome'` — uses Google Chrome or Chromium. This is the better option on Linux, where Chromium is usually just a package-manager install away (e.g. `apt install chromium` / `dnf install chromium`), while Edge is not.
-
-5.  Change the designation to the PATH of the ZoomDownloader folder. As such, an example would be
-
-        cd "C:\Users\Name\Downloads\ZoomScraping\ZoomDownloader"
-
-6.  (Optional) By default, files download into a "Results" folder created right next to "zoom_downloader.py". If you'd rather use a different location, change the "BASE_OUTPUT_PATH" variable near the top of "zoom_downloader.py" to the path you like, such as
-
-        BASE_OUTPUT_PATH = r'C:\Users\Name\Downloads\Results'
-
-7.  (Optional) You can modify which files should be excluded when downloading. In the "REMOVE_EXTENSIONS" variable near the top of "zoom_downloader.py", you can initiize it with any file extensions you wish to be excluded. There are comments that'll show examples if needed.
-
-8.  When ready to parse all zoom links, run this command
-
-        python zoom_downloader.py
-
-9.  From this point, the program should work as intended and may take a while before finishing downloading files. You should be able to find the outputted results in the "Results" folder next to "zoom_downloader.py" (or the PATH you set on step 6).
-
-> Console will output all errors related to downloading a file and will also show any links that had trouble doing so.
-
-Every run also writes diagnostics to a "Debug" folder next to "zoom_downloader.py":
-- **Debug/Snapshot** — a screenshot of the page at the moment a link is skipped or fails, named "Failure at (date/time) for (hyperlink title).png". Useful for cases where the failure reason isn't obvious from the console alone (e.g. the link turned out not to be a recording share page at all).
-- **Debug/Logs** — a full copy of everything printed to the console for that run, one file per run named by its start time.
-- **Debug/Finished Links.txt** — every link that's successfully downloaded, or been confirmed deleted, across every run. If "SKIP_FINISHED_LINKS" (near the top of "zoom_downloader.py") is left at its default of `True`, links already in this file are skipped on the next run instead of redone — handy for resuming after a crash or interruption without redoing completed work. Links that were skipped/failed aren't recorded, so they're always retried. Set it to `False` to always do a full run regardless of what's in the file (new completions still get recorded either way).
+- Actual time per link varies a lot with connection speed and how many files a recording has — there's no reliable fixed estimate anymore, so budget generously for a first run and let the console's live "avg time / est. remaining" line guide you after that.
+- This is for downloading recordings you have legitimate access to (e.g. your own course lectures) — respect whatever access controls Zoom/your institution has in place.

@@ -19,10 +19,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 HEADLESS = True
 MUTE_AUDIO = True
 
-# Max seconds to poll the page (including iframes) for either the "deleted" message or a
-# Continue/Download control before giving up on detecting it directly. Polling exits as soon as
-# either shows up, so a fast-loading page never actually waits this long — this is just the ceiling
-# for a slow one.
+# Max seconds to poll for the "deleted" message or a Continue/Download control before giving up.
 PAGE_DETECT_TIMEOUT = 30
 
 PAGE_LOAD_WAIT = 5
@@ -102,9 +99,10 @@ def append_finished_link(path, link, already_finished: set):
 def write_grouped_links_file(path, entries):
     """Writes entries (each a dict with 'document', 'title', 'link', and optionally 'status_label')
     to path, grouped under "-= Document Title =-" headers in first-seen order, with a blank line
-    between groups. Entries with no document (the legacy two-column format) are grouped under
+    between groups. Entries with no document (the legacy formats) are grouped under
     "-= (No Document) =-". Each line under a group reads "(status_label) Title: Link" (just
-    "Title: Link" if status_label isn't given). Does nothing if entries is empty.
+    "Title: Link" if status_label isn't given, or just "Link" if there's no title either -- the
+    bare 1-column format). Does nothing if entries is empty.
     """
     if not entries:
         return
@@ -125,7 +123,8 @@ def write_grouped_links_file(path, entries):
             file_handle.write(f'-= {group_key} =-\n')
             for entry in groups[group_key]:
                 status_prefix = f"({entry['status_label']}) " if entry.get('status_label') else ''
-                file_handle.write(f"{status_prefix}{entry['title']}: {entry['link']}\n")
+                title_prefix = f"{entry['title']}: " if entry.get('title') else ''
+                file_handle.write(f"{status_prefix}{title_prefix}{entry['link']}\n")
 
 
 def collapse_spacing(name):
@@ -253,8 +252,10 @@ def wait_for_initial_download(temp_folder: str, timeout_seconds: int) -> list:
     return []
 
 
-# Fallback used whenever filename_template is None, or fails to render (e.g. a typo'd token).
-DEFAULT_FILENAME_TEMPLATE = "{title} ({special}) ({original}){ext}"
+# Fallback used whenever filename_template is None, or fails to render (e.g. a typo'd token). The
+# original extension is always appended in code afterward, never through the template itself -- no
+# reason for a custom template to be able to move/drop it.
+DEFAULT_FILENAME_TEMPLATE = "{title} ({special}) ({original})"
 
 
 def move_downloads_to_destination(source_folder: str, destination_folder: str, title_prefix: str = None, rename_exact: bool = False, filename_template: str = None) -> list:
@@ -262,7 +263,9 @@ def move_downloads_to_destination(source_folder: str, destination_folder: str, t
 
     When title_prefix is given, the file is renamed using filename_template (see FILENAME_TEMPLATE in
     zoom_downloader.py for the available tokens and examples), falling back to DEFAULT_FILENAME_TEMPLATE
-    if none is given or it fails to render.
+    if none is given or it fails to render. The original extension is always kept, appended after the
+    template renders. If the template renders down to nothing (e.g. one that omits both {title} and
+    {original}), the original filename is kept as-is instead.
     """
     moved_files = []
     for file_name in list(os.listdir(source_folder)):
@@ -274,18 +277,35 @@ def move_downloads_to_destination(source_folder: str, destination_folder: str, t
 
         if title_prefix:
             original_base_name, extension = os.path.splitext(file_name)
-            if re.search(r'1920x1080', file_name, re.IGNORECASE):
+            # Zoom tags its recording layouts explicitly in the filename: "_as_" is the screen/app
+            # share-only view, "_avo_" is active-speaker-only, "_gvo_" is gallery-only, and no tag at
+            # all is the default combined "shared screen with speaker view" file. Check those markers
+            # first since they're unambiguous; only fall back to guessing from the resolution number
+            # (which can't tell "_as_" apart from the default, since both are commonly 1920x1080) if
+            # none of them are present.
+            if re.search(r'_as_\d+x\d+', file_name, re.IGNORECASE):
+                special_tag = 'Screen Share'
+            elif re.search(r'_avo_\d+x\d+', file_name, re.IGNORECASE):
+                special_tag = 'Camera'
+            elif re.search(r'_gvo_\d+x\d+', file_name, re.IGNORECASE):
+                special_tag = 'Gallery'
+            elif re.search(r'1920x1080', file_name, re.IGNORECASE):
                 special_tag = 'Video'
             elif re.search(r'640x360', file_name, re.IGNORECASE):
                 special_tag = 'Camera'
             else:
                 special_tag = ''
-            template_tokens = {'title': title_prefix, 'special': special_tag, 'original': original_base_name, 'ext': extension}
+            template_tokens = {'title': title_prefix, 'special': special_tag, 'original': original_base_name}
             try:
-                base_filename = (filename_template or DEFAULT_FILENAME_TEMPLATE).format(**template_tokens)
+                rendered_name = (filename_template or DEFAULT_FILENAME_TEMPLATE).format(**template_tokens)
             except Exception:
-                base_filename = DEFAULT_FILENAME_TEMPLATE.format(**template_tokens)
-            base_filename = collapse_spacing(strip_empty_parens(strip_illegal_chars(base_filename)))
+                rendered_name = DEFAULT_FILENAME_TEMPLATE.format(**template_tokens)
+            rendered_name = collapse_spacing(strip_empty_parens(strip_illegal_chars(rendered_name)))
+            # A template that omits both {title} and {original} (or a {special}-only template that
+            # renders empty) can collapse down to nothing usable -- fall back to the original filename
+            # entirely rather than risk an empty name, or every file in the batch colliding on the
+            # same one.
+            base_filename = f'{rendered_name}{extension}' if rendered_name else file_name
 
         destination_path = os.path.join(destination_folder, base_filename)
         
@@ -337,6 +357,28 @@ def remove_files_by_extensions(folder, exts):
                 except Exception:
                     pass
                 break
+    return removed
+
+
+_SCREEN_SHARE_ONLY_RE = re.compile(r'_as_\d+x\d+', re.IGNORECASE)
+
+
+def remove_screen_share_only_files(folder):
+    """Deletes files whose name contains Zoom's "_as_<resolution>" tag -- the screen/app-share-only
+    recording layout, separate from the default combined "shared screen with speaker view" file (and
+    from the active-speaker/gallery-only "_avo_"/"_gvo_" layouts, which this leaves alone). Returns
+    the list of removed filenames.
+    """
+    removed = []
+    if not os.path.isdir(folder):
+        return removed
+    for file_name in list(os.listdir(folder)):
+        if _SCREEN_SHARE_ONLY_RE.search(file_name):
+            try:
+                os.remove(os.path.join(folder, file_name))
+                removed.append(file_name)
+            except Exception:
+                pass
     return removed
 
 

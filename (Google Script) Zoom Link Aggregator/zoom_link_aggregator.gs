@@ -1,17 +1,17 @@
 function extractZoomLinksWithRedirects() {
 
   // ============================================================= CONFIGURATION =============================================================
-  const publicDriveLink = 'https://drive.google.com/file/d/1DkTj0ZkoXSUYpmkyk_XSS-muWe2mqdXQ/view?usp=sharing';
+  const publicDriveLink = 'https://drive.google.com/file/d/'; //
   const sheetName = 'Zoom Redirect Metadata Export';
 
-  const COURSE_NAME = 'CSCI10B'; // 🔧 Set this manually per run
-  const BASE_PATH = 'https://tomrebold.com/video/zoom/';
+  const DOCUMENT_NAME = 'CSCI10B'; // Set this manually per run
+  const BASE_PATH = 'https://johndoe.com/video/zoom/';
 
   // ============================================================= PROGRAM =============================================================
 
   const fileIdMatch = publicDriveLink.match(/[-\w]{25,}/);
   if (!fileIdMatch) {
-    Logger.log('❌ Invalid Google Drive link format.');
+    Logger.log('[ERROR] Invalid Google Drive link format.');
     return;
   }
   const fileId = fileIdMatch[0];
@@ -21,7 +21,7 @@ function extractZoomLinksWithRedirects() {
   try {
     response = UrlFetchApp.fetch(txtFileUrl);
   } catch (e) {
-    Logger.log(`❌ Unable to access file. (${e.message})`);
+    Logger.log(`[ERROR] Unable to access file. (${e.message})`);
     return;
   }
 
@@ -47,13 +47,13 @@ function extractZoomLinksWithRedirects() {
           const epochMatch = url.match(/startTime=(\d+)/);
           const epoch = epochMatch ? epochMatch[1] : '';
           const gmt = epoch ? formatEpochToGMT(epoch) : '';
-          const redirect = gmt ? `${BASE_PATH}${COURSE_NAME}/${document}/${gmt}_Recording_1920x1080.mp4` : '';
+          const redirect = gmt ? `${BASE_PATH}${DOCUMENT_NAME}/${document}/${gmt}_Recording_1920x1080.mp4` : '';
           zoomRows.push([document, title, url, epoch, gmt, redirect]);
         }
       }
 
     } catch (e) {
-      Logger.log(`❌ Error processing: ${rawUrl} — ${e.message}`);
+      Logger.log(`[ERROR] Error processing: ${rawUrl} — ${e.message}`);
     }
   }
 
@@ -62,7 +62,7 @@ function extractZoomLinksWithRedirects() {
   tab.appendRow(['Document Title', 'Hyperlink Title', 'Zoom Link', 'Epoch', 'GMT', 'Redirect Link']);
   zoomRows.forEach(row => tab.appendRow(row));
 
-  Logger.log(`✅ Export complete: ${sheet.getUrl()}`);
+  Logger.log(`[SUCCESS] Export complete: ${sheet.getUrl()}`);
 }
 
 function walkElementTree(element, linkMap) {
